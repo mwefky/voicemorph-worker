@@ -134,10 +134,13 @@ def handler(event):
         # Preprocess (lazy-load models on first real request)
         print("Preprocessing audio...")
         vc = get_converter()
-        from audio_processor import preprocess_audio, save_audio
+        print(f"Model sr={vc.sr}, hop_length={vc.hop_length}")
+        from audio_processor import preprocess_audio
+        import soundfile as sf
         audio_data, sr = preprocess_audio(src_path, sr=vc.sr)
-        preprocessed_path = src_path + "_preprocessed.wav"
-        save_audio(audio_data, preprocessed_path, sr=sr)
+        preprocessed_path = f"/tmp/preprocessed_{job_id}.wav"
+        print(f"Saving preprocessed audio: shape={audio_data.shape}, sr={sr}, path={preprocessed_path}")
+        sf.write(preprocessed_path, audio_data, samplerate=int(sr))
 
         # Convert
         print(f"Converting with preset={preset_id}, steps={diffusion_steps}...")
