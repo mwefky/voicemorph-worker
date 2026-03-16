@@ -52,11 +52,12 @@ def get_s3_client():
 
 def get_converter():
     global converter
-    if converter is None:
+    if converter is None or not converter.loaded:
         print("Loading models...")
         start = time.time()
         from voice_converter_serverless import VoiceConverter
-        converter = VoiceConverter(fp16=True)
+        if converter is None:
+            converter = VoiceConverter(fp16=True)
         converter.load_models()
         print(f"Models loaded in {time.time() - start:.1f}s")
     return converter
