@@ -11,15 +11,11 @@ import traceback
 import runpod
 import requests
 import boto3
-import torchaudio
 import torch
 import numpy as np
 
 # Add seed-vc to path
 sys.path.insert(0, "/app/seed-vc")
-
-from voice_converter_serverless import VoiceConverter
-from audio_processor import preprocess_audio, save_audio
 
 # ─── Globals (loaded once, reused across requests) ───────────────────────────
 converter = None
@@ -59,6 +55,7 @@ def get_converter():
     if converter is None:
         print("Loading models...")
         start = time.time()
+        from voice_converter_serverless import VoiceConverter
         converter = VoiceConverter(fp16=True)
         converter.load_models()
         print(f"Models loaded in {time.time() - start:.1f}s")
@@ -103,6 +100,16 @@ def handler(event):
     """
     try:
         inp = event.get("input", {})
+
+        # Health check / test mode
+        if inp.get("test"):
+            return {
+                "status": "ok",
+                "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "no-gpu",
+                "cuda_available": torch.cuda.is_available(),
+                "presets_available": list(PRESETS.keys()),
+            }
+
         audio_url = inp.get("audioUrl")
         preset_id = inp.get("presetId", "female_01")
         quality = inp.get("quality", "balanced")
@@ -124,9 +131,10 @@ def handler(event):
         print(f"Downloading source audio from {audio_url[:80]}...")
         download_file(audio_url, src_path)
 
-        # Preprocess
+        # Preprocess (lazy-load models on first real request)
         print("Preprocessing audio...")
         vc = get_converter()
+        from audio_processor import preprocess_audio, save_audio
         audio_data, sr = preprocess_audio(src_path, sr=vc.sr)
         preprocessed_path = src_path + "_preprocessed.wav"
         save_audio(audio_data, preprocessed_path, sr=sr)
@@ -134,6 +142,7 @@ def handler(event):
         # Convert
         print(f"Converting with preset={preset_id}, steps={diffusion_steps}...")
         start = time.time()
+        import torchaudio
         result_audio, out_sr = vc.convert(
             preprocessed_path,
             preset_path,
@@ -172,8 +181,16 @@ def handler(event):
 
 # ─── RunPod Entry Point ─────────────────────────────────────────────────────
 
-# Pre-load models at container start (before any requests)
-print("Pre-loading models at container startup...")
-get_converter()
+# Try pre-loading models, but DON'T block handler registration if it fails
+try:
+    print("Pre-loading models at container startup...")
+    get_converter()
+    print("Models pre-loaded successfully!")
+except Exception as e:
+    print(f"WARNING: Model pre-load failed: {e}")
+    print("Models will be loaded on first request instead.")
+    traceback.print_exc()
 
+# CRITICAL: This MUST be reached regardless of model loading status
+print("Starting RunPod serverless handler...")
 runpod.serverless.start({"handler": handler})
