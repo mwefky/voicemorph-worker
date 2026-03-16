@@ -49,7 +49,7 @@ def save_audio(audio: np.ndarray, file_path: str, sr: int = 22050,
                format: str = "wav"):
     """Save audio to file."""
     os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
-    sf.write(file_path, audio, sr, format=format)
+    sf.write(file_path, audio, samplerate=int(sr))
 
 
 def get_audio_info(file_path: str) -> dict:
