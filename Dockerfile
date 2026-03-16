@@ -16,6 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Create dac stub module (VectorQuantize used by seed-vc length_regulator)
+# This avoids pulling the heavy descript-audio-codec package and all its deps
+COPY dac_stub/ /usr/lib/python3/dist-packages/dac/
+
 # Clone Seed-VC source (modules, configs, hf_utils)
 RUN git clone --depth 1 https://github.com/Plachtaa/seed-vc.git /app/seed-vc
 
@@ -34,4 +38,4 @@ COPY presets/ /app/presets/
 # Add seed-vc to Python path
 ENV PYTHONPATH="/app/seed-vc:${PYTHONPATH}"
 
-CMD ["python3", "handler.py"]
+CMD ["python3", "-u", "handler.py"]

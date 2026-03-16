@@ -184,16 +184,46 @@ def handler(event):
 
 # ─── RunPod Entry Point ─────────────────────────────────────────────────────
 
-# Try pre-loading models, but DON'T block handler registration if it fails
-try:
-    print("Pre-loading models at container startup...")
-    get_converter()
-    print("Models pre-loaded successfully!")
-except Exception as e:
-    print(f"WARNING: Model pre-load failed: {e}")
-    print("Models will be loaded on first request instead.")
-    traceback.print_exc()
+import signal
+import threading
 
-# CRITICAL: This MUST be reached regardless of model loading status
+def _log_system_info():
+    """Log system info for debugging."""
+    print(f"Python: {sys.version}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        props = torch.cuda.get_device_properties(0)
+        print(f"VRAM: {props.total_mem / 1e9:.1f} GB")
+    print(f"R2 configured: {bool(R2_ACCOUNT_ID and R2_ACCESS_KEY)}")
+    print(f"Presets: {[k for k in PRESETS if os.path.exists(PRESETS[k])]}")
+    import importlib
+    print(f"RunPod version: {importlib.import_module('runpod').__version__}")
+
+print("=" * 60)
+print("VoiceMorph Worker Starting")
+print("=" * 60)
+
+try:
+    _log_system_info()
+except Exception as e:
+    print(f"System info error: {e}")
+
+# Pre-load models in background so handler starts immediately
+def _preload():
+    try:
+        print("Pre-loading models in background...")
+        get_converter()
+        print("Models pre-loaded successfully!")
+    except Exception as e:
+        print(f"WARNING: Model pre-load failed: {e}")
+        traceback.print_exc()
+
+preload_thread = threading.Thread(target=_preload, daemon=True)
+preload_thread.start()
+
+# CRITICAL: Start handler immediately (don't wait for model loading)
 print("Starting RunPod serverless handler...")
+sys.stdout.flush()
+sys.stderr.flush()
 runpod.serverless.start({"handler": handler})
